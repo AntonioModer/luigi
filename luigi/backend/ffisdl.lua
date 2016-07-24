@@ -15,9 +15,10 @@ local IntOut = ffi.typeof 'int[1]'
 local stack = {}
 
 -- create window and renderer
-sdl.setHint(sdl.HINT_VIDEO_ALLOW_SCREENSAVER, '1')
+sdl.enableScreenSaver()
 
-local window = sdl.createWindow('', 0, 0, 800, 600,
+local window = sdl.createWindow('',
+    sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, 800, 600,
     sdl.WINDOW_SHOWN + sdl.WINDOW_RESIZABLE)
 
 if window == nil then
@@ -41,6 +42,10 @@ local Backend = {}
 
 Backend.sdl = sdl
 
+Backend.isMac = function ()
+    return sdl.getPlatform() == 'Mac OS X'
+end
+
 local callback = {
     draw = function () end,
     resize = function () end,
@@ -55,8 +60,12 @@ local callback = {
 
 Backend.run = function ()
     local event = sdl.Event()
+    local tickInterval = 16 -- ~60 fps (with room)
+    local nextTick = 0
+    local sdl = sdl
 
     while true do
+
         sdl.pumpEvents()
 
         while sdl.pollEvent(event) ~= 0 do
@@ -93,8 +102,14 @@ Backend.run = function ()
         sdl.setRenderDrawColor(renderer, 0, 0, 0, 255)
         sdl.renderClear(renderer)
         callback.draw()
+
+        local now = sdl.getTicks()
+        if nextTick > now then
+            sdl.delay(nextTick - now)
+        end
+        nextTick = now + tickInterval
+
         sdl.renderPresent(renderer)
-        sdl.delay(1)
     end
 end
 
@@ -169,8 +184,6 @@ Backend.print = function (text, x, y)
     sdl.renderCopy(renderer, texture, nil, sdl.Rect(x, y, surface.w, surface.h))
 end
 
-Backend.printf = Backend.print
-
 Backend.getClipboardText = function ()
     return ffi.string(sdl.getClipboardText())
 end
@@ -184,9 +197,7 @@ Backend.getMousePosition = function ()
 end
 
 local function SystemCursor (id)
-    local cursor = sdl.createSystemCursor(id)
-    ffi.gc(cursor, sdl.freeCursor)
-    return cursor
+    return ffi.gc(sdl.createSystemCursor(id), sdl.freeCursor)
 end
 
 local systemCursors = {
@@ -257,13 +268,17 @@ end
 local lastScissor
 
 Backend.setScissor = function (x, y, w, h)
+    -- y = y and Backend.getWindowHeight() - (y + h)
     lastScissor = x and sdl.Rect(x, y, w, h)
     sdl.renderSetClipRect(renderer, lastScissor)
 end
 
 Backend.getScissor = function ()
     if lastScissor ~= nil then
-        return lastScissor.x, lastScissor.y, lastScissor.w, lastScissor.h
+        local x, y = lastScissor.x, lastScissor.y
+        local w, h = lastScissor.w, lastScissor.h
+        -- y = y and Backend.getWindowHeight() - (y + h)
+        return x, y, w, h
     end
 end
 
@@ -301,6 +316,18 @@ local isMouseDown = function ()
     return sdl.getMouseState(nil, nil) > 0
 end
 
+local buttonIds = {
+    [sdl.BUTTON_LEFT] = 'left',
+    [sdl.BUTTON_MIDDLE] = 'middle',
+    [sdl.BUTTON_RIGHT] = 'right',
+    -- [sdl.BUTTON_X1] = 'x1',
+    -- [sdl.BUTTON_X2] = 'x2',
+}
+
+local function getMouseButtonId (value)
+    return value and buttonIds[value] or value
+end
+
 function Backend.show (layout)
     local input = layout.input
 
@@ -311,10 +338,10 @@ function Backend.show (layout)
         return input:handleReshape(layout, width, height)
     end)
     hook(layout, 'mousepressed', function (x, y, button)
-        return input:handlePressStart(layout, button, x, y)
+        return input:handlePressStart(layout, getMouseButtonId(button), x, y)
     end)
     hook(layout, 'mousereleased', function (x, y, button)
-        return input:handlePressEnd(layout, button, x, y)
+        return input:handlePressEnd(layout, getMouseButtonId(button), x, y)
     end)
     hook(layout, 'mousemoved', function (x, y, dx, dy)
         if isMouseDown() then
@@ -336,5 +363,176 @@ function Backend.show (layout)
         return input:handleWheelMove(layout, x, y)
     end)
 end
+
+function Backend.getWindowMaximized ()
+    local flags = sdl.getWindowFlags(window)
+    return bit.band(flags, sdl.WINDOW_MAXIMIZED) ~= 0
+end
+
+function Backend.setWindowMaximized (maximized)
+    if maximized then
+        sdl.maximizeWindow(window)
+    else
+        sdl.restoreWindow(window)
+    end
+end
+
+function Backend.getWindowMinimized ()
+    local flags = sdl.getWindowFlags(window)
+    return bit.band(flags, sdl.WINDOW_MINIMIZED) ~= 0
+end
+
+function Backend.setWindowMinimized (minimized)
+    if minimized then
+        sdl.minimizeWindow(window)
+    else
+        sdl.restoreWindow(window)
+    end
+end
+
+function Backend.getWindowBorderless ()
+    local flags = sdl.getWindowFlags(window)
+    return bit.band(flags, sdl.WINDOW_BORDERLESS) ~= 0
+end
+
+function Backend.setWindowBorderless (borderless)
+    return sdl.setWindowBordered(window, not borderless)
+end
+
+function Backend.getWindowFullscreen ()
+    local flags = sdl.getWindowFlags(window)
+    return bit.band(flags, sdl.WINDOW_FULLSCREEN) ~= 0
+end
+
+function Backend.setWindowFullscreen (fullscreen)
+    return sdl.setWindowFullscreen(window, not not fullscreen)
+end
+
+function Backend.getWindowGrab ()
+    return sdl.getWindowGrab(window)
+end
+
+function Backend.setWindowGrab (grab)
+    return sdl.setWindowGrab(window, not not grab)
+end
+
+local SDL2_image = ffi.load 'SDL2_image'
+
+function Backend.setWindowIcon (icon)
+    -- XXX: is it safe to free this?
+    local surface = ffi.gc(SDL2_image.IMG_Load(icon), sdl.freeSurface)
+
+    if surface == nil then
+        error(ffi.string(sdl.getError()))
+    end
+
+    sdl.setWindowIcon(window, surface)
+end
+
+function Backend.getWindowMaxwidth ()
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowMaximumSize(window, w, h)
+    return w[0]
+end
+
+function Backend.setWindowMaxwidth (maxwidth)
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowMaximumSize(window, w, h)
+    sdl.setWindowMaximumSize(window, maxwidth, h[0] or 16384)
+end
+
+function Backend.getWindowMaxheight ()
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowMaximumSize(window, w, h)
+    return h[0]
+end
+
+function Backend.setWindowMaxheight (maxheight)
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowMaximumSize(window, w, h)
+    sdl.setWindowMaximumSize(window, w[0] or 16384, maxheight)
+end
+
+function Backend.getWindowMinwidth ()
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowMinimumSize(window, w, h)
+    return w[0]
+end
+
+function Backend.setWindowMinwidth (minwidth)
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowMinimumSize(window, w, h)
+    sdl.setWindowMinimumSize(window, minwidth,  h[0] or 0)
+end
+
+function Backend.getWindowMinheight ()
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowMinimumSize(window, w, h)
+    return h[0]
+end
+
+function Backend.setWindowMinheight (minheight)
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowMinimumSize(window, w, h)
+    sdl.setWindowMinimumSize(window, w[0] or 0, minheight)
+end
+
+function Backend.getWindowTop ()
+    local x, y = IntOut(), IntOut()
+    sdl.getWindowPosition(window, x, y)
+    return y[0]
+end
+
+function Backend.setWindowTop (top)
+    local x, y = IntOut(), IntOut()
+    sdl.getWindowPosition(window, x, y)
+    sdl.setWindowPosition(window, x[0] or 0, top)
+end
+
+function Backend.getWindowLeft ()
+    local x, y = IntOut(), IntOut()
+    sdl.getWindowPosition(window, x, y)
+    return x[0]
+end
+
+function Backend.setWindowLeft (left)
+    local x, y = IntOut(), IntOut()
+    sdl.getWindowPosition(window, x, y)
+    sdl.setWindowPosition(window, left, y[0] or 0)
+end
+
+function Backend.getWindowWidth ()
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowSize(window, w, h)
+    return w[0]
+end
+
+function Backend.setWindowWidth (width)
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowSize(window, w, h)
+    sdl.setWindowSize(window, width, h[0] or 600)
+end
+
+function Backend.getWindowHeight ()
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowSize(window, w, h)
+    return h[0]
+end
+
+function Backend.setWindowHeight (height)
+    local w, h = IntOut(), IntOut()
+    sdl.getWindowSize(window, w, h)
+    sdl.setWindowSize(window, w[0] or 800, height)
+end
+
+function Backend.getWindowTitle (title)
+    return sdl.getWindowTitle(window)
+end
+
+function Backend.setWindowTitle (title)
+    sdl.setWindowTitle(window, title)
+end
+
+
 
 return Backend

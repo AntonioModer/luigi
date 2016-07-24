@@ -21,8 +21,9 @@ return function (self)
         type = 'slider.thumb',
     }
 
-    local function unpress ()
-        thumb.pressed = false -- don't make the thumb appear pushed in
+    local function unpress (event)
+        if event.button ~= 'left' then return end
+        thumb.pressed.left = nil -- don't make the thumb appear pushed in
         return false -- don't press thumb on focused keyboard activation
     end
 
@@ -33,12 +34,13 @@ return function (self)
         local key = event.key
         if key == 'left' or key == 'down' then
             self.value = clamp(self.value - self.step)
-        elseif event.key == 'right' or key == 'up' then
+        elseif key == 'right' or key == 'up' then
             self.value = clamp(self.value + self.step)
         end
     end)
 
     local function press (event)
+        if event.button ~= 'left' then return end
         local x1, y1, w, h = self:getRectangle(true, true)
         local x2, y2 = x1 + w, y1 + h
         if self.flow == 'x' then
@@ -72,15 +74,11 @@ return function (self)
         local x1, y1, w, h = self:getRectangle(true, true)
         local x2, y2 = x1 + w, y1 + h
         if self.flow == 'x' then
-            thumb.width = 0
-            thumb.height = false
             local halfThumb = thumb:getWidth() / 2
             x1, x2 = x1 + halfThumb, x2 - halfThumb
             spacer.width = self.value * (x2 - x1)
             spacer.height = false
         else
-            thumb.width = false
-            thumb.height = 0
             local halfThumb = thumb:getHeight() / 2
             y1, y2 = y1 + halfThumb, y2 - halfThumb
             spacer.width = false

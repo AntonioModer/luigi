@@ -1,11 +1,9 @@
 --[[--
-A radio button.
+A radio widget.
 
-Radio buttons change their @{attribute.value|value} attribute to
-`true` when pressed. Radio buttons should also have a `group`
-attribute. When a radio button is pressed, other radio buttons
-in the same layout with the same `group` attribute change their values
-to `false`.
+When pressed, a radio widget's @{attribute.value|value} changes to
+`true`, and the values of other radio widgets in the same `group`
+change to `false`.
 
 Changing the value of a radio button causes it to change its appearance to
 indicate its value. The standard themes use the @{attribute.icon|icon}
@@ -15,24 +13,81 @@ standard themes, the widget's value should be indicated in some other way.
 @widget radio
 --]]--
 
--- TODO: make `group` a first-class attribute
 local groups = {}
 
-return function (self)
-    local groupName = self.group or 'default'
+local function remove (t, value)
+    for i, v in t do
+        if v == value then return table.remove(t, i) end
+    end
+end
 
-    if not groups[groupName] then
-        groups[groupName] = {}
+local function setGroup (self, value)
+    -- remove the widget from the old group
+    local oldValue = self.attributes.group
+    local oldGroup = oldValue and groups[oldValue]
+    if oldGroup then
+        remove(oldGroup, self)
+        -- TODO: is it safe to remove these?
+        if #oldGroup < 1 then groups[oldValue] = nil end
+    end
+    -- add the widget to the new group, or 'defaultGroup' if no group specified
+    value = value or 'defaultGroup'
+    if not groups[value] then
+        groups[value] = {}
+    end
+    local group = groups[value]
+    group[#group + 1] = self
+    self.attributes.group = value
+    local layout = self:getMasterLayout()
+    if not layout[value] then
+        layout:createWidget { id = value, items = group }
+    end
+    self.groupWidget = layout[value]
+end
+
+return function (self)
+
+--[[--
+Special Attributes
+
+@section special
+--]]--
+
+--[[--
+Widget group.
+
+Should contain a string identifying the widget's group.
+If not defined, defaults to the string `'default'`.
+
+When a radio widget is pressed, the values of other radio widgets
+in the same group change to `false`.
+
+@attrib group
+--]]--
+    self:defineAttribute('group', { set = setGroup })
+--[[--
+@section end
+--]]--
+
+    -- when we bubble events, send them to the group widget
+    local bubbleEvent = self.bubbleEvent
+    function self:bubbleEvent (...)
+        local result = bubbleEvent(self, ...)
+        if result ~= nil then return result end
+        return self.groupWidget:bubbleEvent(...)
     end
 
-    local group = groups[groupName]
-
-    group[#group + 1] = self
-
-    self:onPress(function ()
-        for _, widget in ipairs(group) do
+    self:onPress(function (event)
+        if event.button ~= 'left' then return end
+        for _, widget in ipairs(groups[self.group]) do
             widget.value = widget == self
         end
+    end)
+
+    self:onChange(function (event)
+         -- change event is only sent to group widget once.
+        if not self.value then return false end
+        self.groupWidget.selected = self
     end)
 
     self.value = not not self.value

@@ -13,7 +13,16 @@ to recalculate their size and position.
 
 local ROOT = (...):gsub('[^.]*$', '')
 
+local Shortcut = require(ROOT .. 'shortcut')
+
 local Attribute = {}
+
+local function cascade (widget, attribute)
+    local value = rawget(widget, 'attributes')[attribute]
+    if value ~= nil then return value end
+    local parent = rawget(widget, 'parent')
+    return parent and parent[attribute]
+end
 
 --[[--
 Type of widget.
@@ -79,17 +88,6 @@ function Attribute.id.set (widget, value)
     widget.attributes.id = value
 end
 
--- TODO: formalize this bitfield somewhere
-local function parseKeyCombo (value)
-    local mainKey = (value):match '[^%-]+$'
-    local alt = (value):match 'alt%-' and 1 or 0
-    local ctrl = (value):match 'ctrl%-' and 2 or 0
-    local shift = (value):match 'shift%-' and 4 or 0
-    local modifierFlags = alt + ctrl + shift
-
-    return mainKey, modifierFlags
-end
-
 --[[--
 Widget value.
 
@@ -109,6 +107,39 @@ function Attribute.value.set (widget, value)
     widget.attributes.value = value
     widget:bubbleEvent('Change', { value = value, oldValue = oldValue })
 end
+
+--[[--
+Solidity.
+
+Should true or false.
+
+@attrib icon
+--]]--
+Attribute.solid = {}
+
+function Attribute.solid.set (widget, value)
+    widget.attributes.solid = value
+end
+
+Attribute.solid.get = cascade
+
+--[[--
+Context menu.
+
+- This attribute cascades.
+
+@attrib context
+--]]--
+Attribute.context = {}
+
+function Attribute.context.set (widget, value)
+    widget.attributes.context = value
+    if not value then return end
+    value.isContextMenu = true
+    widget.layout:createWidget { type = 'menu', value }
+end
+
+Attribute.context.get = cascade
 
 --[[--
 Widget style.
@@ -150,9 +181,7 @@ in the same layout, or in the master layout if one exists.
 --]]--
 Attribute.status = {}
 
-function Attribute.status.get (widget, value)
-    return widget.attributes.status or widget.parent and widget.parent.status
-end
+Attribute.status.get = cascade
 
 --[[--
 Scroll ability.
@@ -182,7 +211,7 @@ Should contain `true` if the widget can be focused by pressing the tab key.
 Attribute.focusable = {}
 
 --[[--
-Keyboard accelerator.
+Keyboard shortcut.
 
 Should contain a string representing a key and optional modifiers,
 separated by dashes; for example `'ctrl-c'` or `'alt-shift-escape'`.
@@ -192,25 +221,42 @@ as if it had been pressed with a mouse or touch interface.
 
 Setting this attribute re-registers the widget with its layout.
 
-@attrib key
+@attrib shortcut
 --]]--
-Attribute.key = {}
+Attribute.shortcut = {}
 
-function Attribute.key.set (widget, value)
+local function setShortcut (layout, shortcut, value)
+    local mainKey, modifierFlags = Shortcut.parseKeyCombo(shortcut)
+    if mainKey then
+        layout.shortcuts[modifierFlags][mainKey] = value
+    end
+end
+
+function Attribute.shortcut.set (widget, value)
     local layout = widget.layout.master or widget.layout
-    local oldValue = widget.attributes.key
+    local oldValue = widget.attributes.shortcut
 
     if oldValue then
-        local mainKey, modifierFlags = parseKeyCombo(oldValue)
-        layout.accelerators[modifierFlags][mainKey] = nil
+        if type(oldValue) == 'table' then
+            for _, v in ipairs(oldValue) do
+                setShortcut(layout, v, nil)
+            end
+        else
+            setShortcut(layout, oldValue, nil)
+        end
     end
 
     if value then
-        local mainKey, modifierFlags = parseKeyCombo(value)
-        layout.accelerators[modifierFlags][mainKey] = widget
+        if type(value) == 'table' then
+            for _, v in ipairs(value) do
+                setShortcut(layout, v, widget)
+            end
+        else
+            setShortcut(layout, value, widget)
+        end
     end
 
-    widget.attributes.key = value
+    widget.attributes.shortcut = value
 end
 
 --[[--
@@ -351,15 +397,26 @@ this widget's `text`.
 --]]--
 Attribute.font = {}
 
-function Attribute.font.set (widget, value)
-    widget.attributes.font = value
-    widget.fontData = nil
-    widget.textData = nil
+local function resetFont (widget)
+    rawset(widget, 'fontData', nil)
+    rawset(widget, 'textData', nil)
+    for _, child in ipairs(widget) do
+        resetFont(child)
+    end
+    local items = widget.items
+    if items then
+        for _, child in ipairs(items) do
+            resetFont(child)
+        end
+    end
 end
 
-function Attribute.font.get (widget)
-    return widget.attributes.font or widget.parent and widget.parent.font
+function Attribute.font.set (widget, value)
+    widget.attributes.font = value
+    resetFont(widget)
 end
+
+Attribute.font.get = cascade
 
 --[[--
 Font size.
@@ -379,9 +436,7 @@ function Attribute.size.set (widget, value)
     widget.textData = nil
 end
 
-function Attribute.size.get (widget)
-    return widget.attributes.size or widget.parent and widget.parent.size
-end
+Attribute.size.get = cascade
 
 --[[--
 Text Attributes.
@@ -420,9 +475,7 @@ function Attribute.color.set (widget, value)
     widget.textData = nil
 end
 
-function Attribute.color.get (widget)
-    return widget.attributes.color or widget.parent and widget.parent.color
-end
+Attribute.color.get = cascade
 
 --[[--
 Text and icon alignment.
@@ -444,9 +497,7 @@ function Attribute.align.set (widget, value)
     widget.textData = nil
 end
 
-function Attribute.align.get (widget)
-    return widget.attributes.align or widget.parent and widget.parent.align
-end
+Attribute.align.get = cascade
 
 --[[--
 Wrap text onto multiple lines.
@@ -466,9 +517,7 @@ function Attribute.wrap.set (widget, value)
     widget.textData = nil
 end
 
-function Attribute.wrap.get (widget)
-    return widget.attributes.wrap or widget.parent and widget.parent.wrap
-end
+Attribute.wrap.get = cascade
 
 --[[--
 Visual Attributes.

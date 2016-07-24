@@ -4,18 +4,102 @@ Widget class.
 @classmod Widget
 --]]--
 
+local STRICT = false
 local ROOT = (...):gsub('[^.]*$', '')
 
 local Backend = require(ROOT .. 'backend')
 local Event = require(ROOT .. 'event')
 local Attribute = require(ROOT .. 'attribute')
+local Painter = require(ROOT .. 'painter')
 local Font = Backend.Font
 
 local Widget = {}
 
 Event.injectBinders(Widget)
 
+--[[--
+API Properties
+
+These properties may be useful when creating user interfaces,
+and are a formal part of the API.
+
+@section api
+--]]--
+
+--[[--
+Whether this widget has keyboard focus.
+
+Can be used by styles and themes. This value is automatically set by
+the `Input` class, and should generally be treated as read-only.
+--]]--
+Widget.focused = false
+
+--[[--
+Whether the pointer is within this widget.
+
+Can be used by styles and themes. This value is automatically set by
+the `Input` class, and should generally be treated as read-only.
+--]]--
+Widget.hovered = false
+
+--[[--
+Table of mouse buttons pressed on this widget and not yet released,
+keyed by mouse button name with booleans as values.
+
+Can be used by styles and themes. Values are automatically set by
+the `Input` class, and should generally be treated as read-only.
+--]]--
+Widget.pressed = nil
+
+--[[--
+Internal Properties
+
+These properties are used internally, but are not likely to be useful
+when creating user interfaces; they are not a formal part of the API
+and may change at any time.
+
+@section internal
+--]]--
+
+--[[--
+Identifies this object as a widget.
+
+Can be used to determine whether an unknown object is a widget.
+--]]--
 Widget.isWidget = true
+
+--[[--
+Whether the widget is currently being reshaped.
+
+Used internally by `reshape` to prevent stack overflows when handling
+`Reshape` events.
+--]]--
+Widget.isReshaping = false
+
+--[[--
+Whether this widget has a type.
+
+Used by the @{attribute.type|type} attribute to determine whether to
+run the type initializer when the widget's type is set. After a type
+initializer has run, `hasType` becomes `true` and no other type
+initializers should run on the widget.
+--]]--
+Widget.hasType = false
+
+--[[--
+The `Font` object associated with the widget.
+--]]--
+Widget.fontData = nil
+
+--[[--
+The `Text` object associated with the widget.
+--]]--
+Widget.textData = nil
+
+
+--[[--
+@section end
+--]]--
 
 Widget.typeDecorators = {
     button = require(ROOT .. 'widget.button'),
@@ -29,7 +113,14 @@ Widget.typeDecorators = {
     status = require(ROOT .. 'widget.status'),
     stepper = require(ROOT .. 'widget.stepper'),
     text = require(ROOT .. 'widget.text'),
+    window = require(ROOT .. 'widget.window'),
 }
+
+--[[--
+Static Functions
+
+@section static
+--]]--
 
 --[[--
 Register a custom widget type.
@@ -46,16 +137,17 @@ function Widget.register (name, decorator)
     Widget.typeDecorators[name] = decorator
 end
 
-local function maybeCall (something, ...)
-    return something
-end
+--[[--
+@section end
+--]]--
 
 -- look for properties in attributes, Widget, style, and theme
 local function metaIndex (self, property)
     -- look in widget's own attributes
-    local A = Attribute[property]
+    local A = self.attributeDescriptors[property] or Attribute[property]
     if A then
-        local value = A.get and A.get(self) or self.attributes[property]
+        local value = A.get and A.get(self, property)
+            or self.attributes[property]
         if type(value) == 'function' then value = value(self) end
         if value ~= nil then return value end
     end
@@ -75,15 +167,19 @@ end
 
 -- setting attributes triggers special behavior
 local function metaNewIndex (self, property, value)
-    local A = Attribute[property]
+    local A = self.attributeDescriptors[property] or Attribute[property]
     if A then
         if A.set then
-            A.set(self, value)
+            A.set(self, value, property)
         else
             self.attributes[property] = value
         end
     else
-        rawset(self, property, value)
+        if STRICT and Widget[property] == nil then
+            error(property .. ' is not a valid widget property.')
+        else
+            rawset(self, property, value)
+        end
     end
 end
 
@@ -120,6 +216,9 @@ local function metaCall (Widget, layout, self)
     self.position = { x = nil, y = nil }
     self.dimensions = { width = nil, height = nil }
     self.attributes = {}
+    self.attributeDescriptors = {}
+    self.pressed = {}
+    self.painter = Painter(self)
 
     setmetatable(self, { __index = metaIndex, __newindex = metaNewIndex })
 
@@ -134,6 +233,36 @@ local function metaCall (Widget, layout, self)
         self[k].parent = self
     end
 
+    return self
+end
+
+function Widget:getMasterLayout ()
+    return self.layout.master or self.layout
+end
+
+--[[--
+Define a custom attribute for this widget.
+
+When an attribute is defined, the current value is stored locally and
+removed from the widget's own properties and its attributes collection.
+Then, the newly-defined setter is called with the stored value.
+
+@tparam string name
+The name of the attribute.
+
+@tparam table descriptor
+A table, optionally containing `get` and `set` functions (see `Attribute`).
+
+@treturn Widget
+Return this widget for chaining.
+--]]--
+function Widget:defineAttribute (name, descriptor)
+    local value = rawget(self, name)
+    if value == nil then value = self.attributes[name] end
+    self.attributeDescriptors[name] = descriptor or {}
+    rawset(self, name, nil)
+    self.attributes[name] = nil
+    self[name] = value
     return self
 end
 
@@ -291,17 +420,7 @@ function Widget:addChild (data)
     return child
 end
 
-local function checkReshape (widget)
-    if widget.needsReshape then
-        widget.position = {}
-        widget.dimensions = {}
-        widget.needsReshape = nil
-    end
-end
-
 function Widget:calculateDimension (name)
-    checkReshape(self)
-
     -- If dimensions are already calculated, return them.
     if self.dimensions[name] then
         return self.dimensions[name]
@@ -378,7 +497,7 @@ function Widget:calculateDimension (name)
     return size
 end
 
-local function calculateRootPosition (self, axis)
+function Widget:calculateRootPosition (axis)
     local value = (axis == 'x' and self.left) or (axis ~= 'x' and self.top)
 
     if value then
@@ -401,15 +520,13 @@ local function calculateRootPosition (self, axis)
 end
 
 function Widget:calculatePosition (axis)
-    checkReshape(self)
-
     if self.position[axis] then
         return self.position[axis]
     end
     local parent = self.parent
     local scroll = 0
     if not parent then
-        return calculateRootPosition(self, axis)
+        return self:calculateRootPosition(axis)
     else
         scroll = axis == 'x' and (parent.scrollX or 0)
             or axis ~= 'x' and (parent.scrollY or 0)
@@ -508,9 +625,16 @@ Gets the combined width of the widget's children.
 The content width.
 --]]--
 function Widget:getContentWidth ()
+    if not self.layout.isReady then return 0 end
     local width = 0
-    for _, child in ipairs(self) do
-        width = width + child:getWidth()
+    if self.flow == 'x' then
+        for _, child in ipairs(self) do
+            width = width + child:getWidth()
+        end
+    else
+        for _, child in ipairs(self) do
+            width = math.max(width, child:getWidth())
+        end
     end
     return width
 end
@@ -524,11 +648,25 @@ Gets the combined height of the widget's children.
 The content height.
 --]]--
 function Widget:getContentHeight ()
+    if not self.layout.isReady then return 0 end
     local height = 0
-    for _, child in ipairs(self) do
-        height = height + child:getHeight()
+    if self.flow ~= 'x' then
+        for _, child in ipairs(self) do
+            height = height + child:getHeight()
+        end
+    else
+        for _, child in ipairs(self) do
+            height = math.max(height, child:getHeight())
+        end
     end
     return height
+end
+
+function Widget:getFont ()
+    if not self.fontData then
+        self.fontData = Font(self.font, self.size)
+    end
+    return self.fontData
 end
 
 --[[--
@@ -583,13 +721,25 @@ The point's Y coordinate.
 true if the point is within the widget, else false.
 --]]--
 function Widget:isAt (x, y)
-    checkReshape(self)
-
     local x1, y1, w, h = self:getRectangle()
     local x2, y2 = x1 + w, y1 + h
     return (x1 <= x) and (x2 >= x) and (y1 <= y) and (y2 >= y)
 end
 
+--[[--
+Iterate widget's ancestors.
+
+@tparam boolean includeSelf
+Whether to include this widget as the first result.
+
+@treturn function
+Returns an iterator function that returns widgets.
+
+@usage
+for ancestor in myWidget:eachAncestor(true) do
+    print(widget.type or 'generic')
+end
+--]]--
 function Widget:eachAncestor (includeSelf)
     local instance = includeSelf and self or self.parent
     return function()
@@ -598,6 +748,10 @@ function Widget:eachAncestor (includeSelf)
         instance = widget.parent
         return widget
     end
+end
+
+function Widget:paint ()
+    return self.painter:paint()
 end
 
 --[[--
@@ -612,17 +766,59 @@ on the parent widget.
 function Widget:reshape ()
     if self.isReshaping then return end
     self.isReshaping = true
-    self.needsReshape = true
+
+    self:scrollBy(0, 0)
+
+    self.position = {}
+    self.dimensions = {}
+
     self.textData = nil
-    Event.Reshape:emit(self, {
-        target = self
-    })
-    for i, widget in ipairs(self) do
-        if widget.reshape then
-            widget:reshape()
+
+    Event.Reshape:emit(self, { target = self })
+    for _, child in ipairs(self) do
+        if child.reshape then
+            child:reshape()
+        end
+    end
+    local items = self.items
+    if items then
+        for _, child in ipairs(items) do
+            if child.reshape then
+                child:reshape()
+            end
         end
     end
     self.isReshaping = nil
+end
+
+function Widget:scrollBy (amount)
+    if not self.scroll then return end
+    --TODO: eliminate redundancy
+    if self.flow == 'x' then
+        if not self.scrollX then self.scrollX = 0 end
+        local scrollX = self.scrollX - amount * 10
+        local inner = math.max(self:getContentWidth(), self.innerWidth or 0)
+        local maxX = inner - self:getWidth()
+            + (self.padding or 0) * 2 + (self.margin or 0) * 2
+        scrollX = math.max(math.min(scrollX, maxX), 0)
+        if scrollX ~= self.scrollX then
+            self.scrollX = scrollX
+            self:reshape()
+            return true
+        end
+    else
+        if not self.scrollY then self.scrollY = 0 end
+        local scrollY = self.scrollY - amount * 10
+        local inner = math.max(self:getContentHeight(), self.innerHeight or 0)
+        local maxY = inner - self:getHeight()
+            + (self.padding or 0) * 2 + (self.margin or 0) * 2
+        scrollY = math.max(math.min(scrollY, maxY), 0)
+        if scrollY ~= self.scrollY then
+            self.scrollY = scrollY
+            self:reshape()
+            return true
+        end
+    end
 end
 
 return setmetatable(Widget, { __call = metaCall })

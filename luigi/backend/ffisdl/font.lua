@@ -1,4 +1,5 @@
 local REL = (...):gsub('[^.]*$', '')
+local APP_ROOT = rawget(_G, 'LUIGI_APP_ROOT') or ''
 
 local ffi = require 'ffi'
 local sdl = require(REL .. 'sdl')
@@ -207,7 +208,7 @@ function Font:constructor (path, size)
     local key = path .. '_' .. size
 
     if not fontCache[key] then
-        local font = SDL2_ttf.TTF_OpenFont(path, size)
+        local font = SDL2_ttf.TTF_OpenFont(APP_ROOT .. path, size)
 
         if font == nil then
             error(ffi.string(sdl.getError()))
@@ -243,22 +244,6 @@ function Font:getAdvance (text)
     local w, h = IntOut(), IntOut()
     SDL2_ttf.TTF_SizeUTF8(self.sdlFont, text, w, h)
     return w[0]
-end
-
-function Font:getWrappedHeight (text)
-    --[[
-    -- TTF_Font *font, const char *text, int wrapLength, int *w, int *h, int *lineCount
-    local w, h, lineCount = IntOut(), IntOut(), IntOut()
-
-    SDL2_ttf.TTF_SizeUTF8_Wrapped(self.sdlFont, text, self.width,
-        w, h, lineCount)
-
-    return self:getLineHeight() * lineCount
-    --]]
-
-    local w, h = IntOut(), IntOut()
-    SDL2_ttf.TTF_SizeUTF8(self.sdlFont, text, w, h)
-    return h[0]
 end
 
 return Font

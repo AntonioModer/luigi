@@ -10,8 +10,18 @@ not be explicitly created.
 local ROOT = (...):gsub('[^.]*.[^.]*.[^.]*$', '')
 
 local Backend = require(ROOT .. 'backend')
+local Shortcut = require(ROOT .. 'shortcut')
 
 local Layout, Event
+
+local function checkMouseButton (self, event)
+    local button = event.button
+    if not button then return false end
+    if self.isContextMenu then
+        return button == 'left' or button == 'right'
+    end
+    return button == 'left'
+end
 
 local function addLayoutChildren (self)
     local root = self.menuLayout.root
@@ -30,24 +40,24 @@ local function addLayoutChildren (self)
         local childHeight = child:getHeight()
         height = height + childHeight
         if child.type == 'menu.item' then
+            local font = child:getFont()
             local pad = child.padding or 0
-            local tw = child.fontData:getAdvance(child[2].text)
+            local tw = font:getAdvance(child[2].text)
                 + pad * 2 + childHeight
-            local kw = child.fontData:getAdvance(child[3].text)
+            local kw = font:getAdvance(child[3].text)
                 + pad * 2 + childHeight
             textWidth = math.max(textWidth, tw)
             keyWidth = math.max(keyWidth, kw)
         end
     end
 
-    local isSubmenu = self.parentMenu and self.parentMenu.parentMenu
-    local x = isSubmenu and self:getWidth() or 0
-    local y = isSubmenu and 0 or self:getHeight()
-
-    root.left = self:getX() + x
-    root.top = self:getY() + y
     root.height = height
     root.width = textWidth + keyWidth + (root.padding or 0)
+
+    local isSubmenu = self.parentMenu and self.parentMenu.parentMenu
+    local w = isSubmenu and self:getWidth() or 0
+    local h = isSubmenu and 0 or self:getHeight()
+    self.menuLayout:placeNear(self:getX(), self:getY(), w, h)
 end
 
 local function show (self)
@@ -87,6 +97,7 @@ local function deactivateSiblings (target)
 end
 
 local function activate (event, ignoreIfNoneOpen)
+    -- if event.button and event.button ~= 'left' then return end
     local target = event.target
 
     while target.parent
@@ -96,6 +107,8 @@ local function activate (event, ignoreIfNoneOpen)
             return
         end
     end
+
+    -- if not checkMouseButton(event) then return end
 
     local wasSiblingOpen = deactivateSiblings(target)
     local ignore = ignoreIfNoneOpen and not wasSiblingOpen
@@ -120,12 +133,14 @@ local function registerLayoutEvents (self)
             if self.parentMenu == self.rootMenu then
                 deactivateSiblings(self.rootMenu[1])
             end
-        else
+        elseif checkMouseButton(self, event) then
             activate(event)
         end
     end)
 
     menuLayout:onPress(function (event)
+        -- if event.button ~= 'left' then return end
+        if not checkMouseButton(self, event) then return end
         for widget in event.target:eachAncestor(true) do
             if widget.type == 'menu.item' and #widget.items == 0 then
                 menuLayout:hide()
@@ -135,6 +150,8 @@ local function registerLayoutEvents (self)
     end)
 
     menuLayout:onPressEnd(function (event)
+        -- if event.button ~= 'left' then return end
+        if not checkMouseButton(self, event) then return end
         for widget in event.target:eachAncestor(true) do
             if widget.type == 'menu.item' and #widget.items == 0
             and event.target ~= event.origin then
@@ -148,31 +165,26 @@ local function registerLayoutEvents (self)
 end
 
 local function initialize (self)
-    if not self.fontData then
-        self.fontData = Backend.Font(self.font, self.size)
-    end
+    local font = self:getFont()
     local pad = self.padding or 0
     local isSubmenu = self.parentMenu and self.parentMenu.parentMenu
-    local text, key, icon = self.text or '', self.key or '', self.icon
-    local textWidth = self.fontData:getAdvance(text) + pad * 2
+    local text, shortcut, icon = self.text or '', self.shortcut or '', self.icon
+    local textWidth = font:getAdvance(text) + pad * 2
 
     if isSubmenu then
-        local tc = self.color or { 0, 0, 0, 255 }
-        local keyColor = { tc[1], tc[2], tc[3], 0x90 }
         local edgeType
         if #self.items > 0 then
-            key = ' '
+            shortcut = ' '
             edgeType = 'menu.expander'
         else
-            key = key:gsub('%f[%w].', string.upper) -- :gsub('-', '+')
+            shortcut = Shortcut.stringify(shortcut)
         end
-        self.height = self.fontData:getLineHeight() + pad * 2
         self.flow = 'x'
         self:addChild { icon = icon, width = self.height }
         self:addChild { text = text, width = textWidth }
         self:addChild {
             type = edgeType,
-            text = key,
+            text = shortcut,
             align = 'middle right',
             minwidth = self.height,
             color = function ()
@@ -184,7 +196,9 @@ local function initialize (self)
         self.icon = nil
         self.text = nil
     else
-        self.width = textWidth
+        -- top level menu
+        self.width = textWidth + pad * 2
+        self.align = 'middle center'
     end
 end
 

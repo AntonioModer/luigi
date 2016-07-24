@@ -29,11 +29,15 @@ layout.mainCanvas.text = [[
 This program demonstrates some features of the Luigi UI library.
 
 Luigi is a widget toolkit that runs under Love or LuaJIT.
-]]
+
+Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.]]
+
 
 layout.mainCanvas.align = 'top'
 
 layout.mainCanvas.wrap = true
+
+layout.mainCanvas.scroll = true
 
 -- help dialogs
 
@@ -76,8 +80,28 @@ end)
 local Backend = require 'luigi.backend'
 layout.menuQuit:onPress(Backend.quit)
 
+layout.mono:onPress(function()
+    layout.leftSideBox.font = 'font/DejaVuSansMono.ttf'
+end)
+
+layout.sans:onPress(function()
+    layout.leftSideBox.font = false
+end)
+
+layout.mono2:onPress(function()
+    layout.stepper.font = 'font/DejaVuSansMono.ttf'
+end)
+
+layout.sans2:onPress(function()
+    layout.stepper.font = false
+end)
+
+layout.fish:onChange(function()
+    layout.fishStatus.text = 'Selected: ' .. layout.fish.selected.text
+end)
+
 -- show the main layout
 layout:show()
 
--- only needed when using LuaJIT/SDL
-Backend.run()
+-- only needed when using LuaJIT/SDL and not using launch.lua
+-- Backend.run()

@@ -3,34 +3,19 @@ local ROOT = (...):gsub('[^.]*$', '')
 local Backend = require(ROOT .. 'backend')
 local Base = require(ROOT .. 'base')
 local Event = require(ROOT .. 'event')
-local Font = Backend.Font
+local Mosaic = require(ROOT .. 'mosaic')
 local Text = Backend.Text
 
-local Renderer = Base:extend()
+local Painter = Base:extend()
 
 local imageCache = {}
-local sliceCache = {}
+-- local sliceCache = {}
 
-
-
-local function intersectScissor (x, y, w, h)
-    local sx, sy, sw, sh = Backend.getScissor()
-    if not sx then
-        return Backend.setScissor(x, y, w, h)
-    end
-    local x1 = math.max(sx, x)
-    local y1 = math.max(sy, y)
-    local x2 = math.min(sx + sw, x + w)
-    local y2 = math.min(sy + sh, y + h)
-    if x2 > x1 and y2 > y1 then
-        Backend.setScissor(x1, y1, x2 - x1, y2 - y1)
-    else
-        -- HACK
-        Backend.setScissor(-100, -100, 1, 1)
-    end
+function Painter:constructor (widget)
+    self.widget = widget
 end
 
-function Renderer:loadImage (path)
+function Painter:loadImage (path)
     if not imageCache[path] then
         imageCache[path] = Backend.Image(path)
     end
@@ -38,75 +23,17 @@ function Renderer:loadImage (path)
     return imageCache[path]
 end
 
--- TODO: make slices a seperate drawable
-
-function Renderer:loadSlices (path)
-    local slices = sliceCache[path]
-
-    if not slices then
-        slices = {}
-        sliceCache[path] = slices
-        local image = self:loadImage(path)
-        local iw, ih = image:getWidth(), image:getHeight()
-        local w, h = math.floor(iw / 3), math.floor(ih / 3)
-        local Quad = Backend.Quad
-
-        slices.image = image
-        slices.width = w
-        slices.height = h
-
-        slices.topLeft = Quad(0, 0, w, h, iw, ih)
-        slices.topCenter = Quad(w, 0, w, h, iw, ih)
-        slices.topRight = Quad(iw - w, 0, w, h, iw, ih)
-
-        slices.middleLeft = Quad(0, h, w, h, iw, ih)
-        slices.middleCenter = Quad(w, h, w, h, iw, ih)
-        slices.middleRight = Quad(iw - w, h, w, h, iw, ih)
-
-        slices.bottomLeft = Quad(0, ih - h, w, h, iw, ih)
-        slices.bottomCenter = Quad(w, ih - h, w, h, iw, ih)
-        slices.bottomRight = Quad(iw - w, ih - h, w, h, iw, ih)
-    end
-
-    return slices
-end
-
-function Renderer:renderSlices (widget)
-
-    local path = widget.slices
-    if not path then return end
-
+function Painter:paintSlices ()
+    local widget = self.widget
+    local mosaic = Mosaic.fromWidget(widget)
+    if not mosaic then return end
     local x, y, w, h = widget:getRectangle(true)
-
-    local slices = self:loadSlices(path)
-
-    local batch = Backend.SpriteBatch(slices.image)
-
-    local xScale = (w - slices.width * 2) / slices.width
-    local yScale = (h - slices.height * 2) / slices.height
-
-    batch:add(slices.middleCenter, x + slices.width, y + slices.height, 0,
-    xScale, yScale)
-
-    batch:add(slices.topCenter, x + slices.width, y, 0,
-        xScale, 1)
-    batch:add(slices.bottomCenter, x + slices.width, y + h - slices.height, 0,
-        xScale, 1)
-
-    batch:add(slices.middleLeft, x, y + slices.height, 0,
-        1, yScale)
-    batch:add(slices.middleRight, x + w - slices.width, y + slices.height, 0,
-        1, yScale)
-
-    batch:add(slices.topLeft, x, y)
-    batch:add(slices.topRight, x + w - slices.width, y)
-    batch:add(slices.bottomLeft, x, y + h - slices.height)
-    batch:add(slices.bottomRight, x + w - slices.width, y + h - slices.height)
-
-    Backend.draw(batch)
+    mosaic:setRectangle(x, y, w, h)
+    mosaic:draw()
 end
 
-function Renderer:renderBackground (widget)
+function Painter:paintBackground ()
+    local widget = self.widget
     if not widget.background then return end
     local x, y, w, h = widget:getRectangle(true)
 
@@ -116,7 +43,8 @@ function Renderer:renderBackground (widget)
     Backend.pop()
 end
 
-function Renderer:renderOutline (widget)
+function Painter:paintOutline ()
+    local widget = self.widget
     if not widget.outline then return end
     local x, y, w, h = widget:getRectangle(true)
 
@@ -127,7 +55,8 @@ function Renderer:renderOutline (widget)
 end
 
 -- returns icon coordinates and rectangle with remaining space
-function Renderer:positionIcon (widget, x1, y1, x2, y2)
+function Painter:positionIcon (x1, y1, x2, y2)
+    local widget = self.widget
     if not widget.icon then
         return nil, nil, x1, y1, x2, y2
     end
@@ -162,16 +91,13 @@ function Renderer:positionIcon (widget, x1, y1, x2, y2)
 end
 
 -- returns text coordinates
-function Renderer:positionText (widget, x1, y1, x2, y2)
+function Painter:positionText (x1, y1, x2, y2)
+    local widget = self.widget
     if not widget.text or x1 >= x2 then
         return nil, nil, x1, y1, x2, y2
     end
 
-    if not widget.fontData then
-        widget.fontData = Font(widget.font, widget.size)
-    end
-
-    local font = widget.fontData
+    local font = widget:getFont()
     local align = widget.align or ''
     local horizontal = 'left'
 
@@ -205,19 +131,15 @@ function Renderer:positionText (widget, x1, y1, x2, y2)
     return font, x1, y
 end
 
-function Renderer:renderIconAndText (widget)
+function Painter:paintIconAndText ()
+    local widget = self.widget
+    if not (widget.icon or widget.text) then return end
     local x, y, w, h = widget:getRectangle(true, true)
-
-    -- if the drawable area has no width or height, don't render
-    if w < 1 or h < 1 then
-        return
-    end
+    if w < 1 or h < 1 then return end
 
     -- calculate position for icon and text based on alignment and padding
-    local iconX, iconY, x1, y1, x2, y2 = self:positionIcon(
-        widget, x, y, x + w, y + h)
-    local font, textX, textY = self:positionText(
-        widget, x1, y1, x2, y2)
+    local iconX, iconY, x1, y1, x2, y2 = self:positionIcon(x, y, x + w, y + h)
+    local font, textX, textY = self:positionText(x1, y1, x2, y2)
 
     local icon = widget.icon and self:loadImage(widget.icon)
     local text = widget.text
@@ -257,7 +179,7 @@ function Renderer:renderIconAndText (widget)
 
     Backend.push()
 
-    intersectScissor(x, y, w, h)
+    Backend.intersectScissor(x, y, w, h)
 
     -- draw the icon
     if icon then
@@ -267,43 +189,44 @@ function Renderer:renderIconAndText (widget)
 
     -- draw the text
     if text and textX and textY and w > 1 then
-        textX, textY = math.floor(textX), math.floor(textY)
+        widget.innerHeight = textY - y + widget.textData:getHeight()
+        widget.innerWidth = textX - x + widget.textData:getWidth()
+        textX = math.floor(textX - (widget.scrollX or 0))
+        textY = math.floor(textY - (widget.scrollY or 0))
         Backend.draw(widget.textData, textX, textY)
     end
 
     Backend.pop()
 end
 
-function Renderer:renderChildren (widget)
-    for i, child in ipairs(widget) do
-        self:render(child)
+function Painter:paintChildren ()
+    for i, child in ipairs(self.widget) do
+        child:paint()
     end
 end
 
-function Renderer:render (widget)
+function Painter:paint ()
+    local widget = self.widget
+    local x, y, w, h = widget:getRectangle()
+
+    -- if the drawable area has no width or height, don't paint
+    if w < 1 or h < 1 then return end
+
     Event.PreDisplay:emit(widget, { target = widget }, function()
-
-        local x, y, w, h = widget:getRectangle()
-
-        -- if the drawable area has no width or height, don't render
-        if w < 1 or h < 1 then
-            return
-        end
 
         Backend.push()
 
-        local parent = widget.parent
-        if parent then
-            intersectScissor(x, y, w, h)
+        if widget.parent then
+            Backend.intersectScissor(x, y, w, h)
         else
             Backend.setScissor()
         end
 
-        self:renderBackground(widget)
-        self:renderOutline(widget)
-        self:renderSlices(widget)
-        self:renderIconAndText(widget)
-        self:renderChildren(widget)
+        self:paintBackground()
+        self:paintOutline()
+        self:paintSlices()
+        self:paintIconAndText()
+        self:paintChildren()
 
         Backend.pop()
 
@@ -311,4 +234,4 @@ function Renderer:render (widget)
     Event.Display:emit(widget, { target = widget })
 end
 
-return Renderer
+return Painter

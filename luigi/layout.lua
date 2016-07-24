@@ -22,7 +22,6 @@ local Event = require(ROOT .. 'event')
 local Widget = require(ROOT .. 'widget')
 local Input = require(ROOT .. 'input')
 local Style = require(ROOT .. 'style')
-local Backend = require(ROOT .. 'backend')
 
 local Layout = Base:extend()
 
@@ -56,6 +55,27 @@ function Layout:constructor (data, master)
     self.root = data
 
     Widget(self, data)
+
+    self.isReady = true
+end
+
+--[[--
+Create a detached widget.
+
+Internal function used to create widgets that are associated with
+a layout, but "detached" from it.
+
+Used by context menus, which use their "owner" widget's layout
+for theme and style information but appear in a separate layout.
+
+@tparam table data
+A tree of widget data.
+
+@treturn Widget
+A widget instance.
+--]]--
+function Layout:createWidget (data)
+    return Widget(self, data)
 end
 
 local function clearWidget (widget)
@@ -64,18 +84,20 @@ local function clearWidget (widget)
     widget.position = {}
     widget.dimensions = {}
     widget.type = widget.type
+    for _, child in ipairs(widget) do
+        clearWidget(child)
+    end
+    local items = widget.items
+    if items then
+        for _, item in ipairs(items) do
+            clearWidget(item)
+        end
+    end
 end
 
 local function reset (self)
     if not self.root then return end
-    local widget = self.root:getNextNeighbor()
-
     clearWidget(self.root)
-
-    while widget ~= self.root do
-        clearWidget(widget)
-        widget = widget:getNextNeighbor()
-    end
 end
 
 --[[--
@@ -92,10 +114,6 @@ Master layout
 --]]--
 function Layout:setMaster (layout)
     self.master = layout
-
-    function self:addWidget (...)
-        return layout:addWidget(...)
-    end
 
     reset(self)
     return self
@@ -158,6 +176,9 @@ end
 Show the layout.
 
 Hooks all appropriate Love events and callbacks.
+
+@treturn Layout
+Return this layout for chaining.
 --]]--
 function Layout:show ()
     if self.isShown then
@@ -173,12 +194,17 @@ function Layout:show ()
 
     Backend.show(self)
     self.root:reshape()
+
+    return self
 end
 
 --[[--
 Hide the layout.
 
 Unhooks Love events and callbacks.
+
+@treturn Layout
+Return this layout for chaining.
 --]]--
 function Layout:hide ()
     if not self.isShown then
@@ -186,6 +212,8 @@ function Layout:hide ()
     end
     self.isShown = nil
     Backend.hide(self)
+
+    return self
 end
 
 --[[--
@@ -255,101 +283,157 @@ function Layout:getWidgetAt (x, y, root)
     if root:isAt(x, y) then return root end
 end
 
--- Add handlers for keyboard accelerators, tab focus, and mouse wheel scroll
-function Layout:addDefaultHandlers ()
-    self.accelerators = {}
+--[[--
+Place a layout near a point or rectangle.
 
-    for i = 0, 8 do
-        self.accelerators[i] = {}
+@tparam number left
+Number of pixels from window's left edge.
+
+@tparam number top
+Number of pixels from window's top edge.
+
+@tparam[opt] number width
+Width of the rectangle to place layout outside of, defaults to 0.
+
+@tparam[opt] number height
+Height of the rectangle to place layout outside of, defaults to 0.
+
+@treturn Layout
+Return this layout for chaining.
+--]]--
+function Layout:placeNear (left, top, width, height)
+    width, height = width or 0, height or 0
+    local root = self.root
+    -- place to the left if there's no room to the right
+    local layoutWidth = root:getWidth()
+    local windowWidth, windowHeight = Backend.getWindowSize()
+    if left + width + layoutWidth > windowWidth then
+        left = left - layoutWidth - width
+    else
+        left = left + width
+    end
+    -- place above if there's no room below
+    local layoutHeight = root:getHeight()
+    if top + height + layoutHeight > windowHeight then
+        top = top - layoutHeight - height
+    else
+        top = top + height
+    end
+    root.left = left
+    root.top = top
+end
+
+
+-- Add handlers for keyboard shortcuts, tab focus, and mouse wheel scroll
+function Layout:addDefaultHandlers ()
+    self.shortcuts = {}
+
+    for i = 0, 15 do
+        self.shortcuts[i] = {}
     end
 
-    self:onKeyPress(function (event)
+    self.behavior = {}
 
-        -- tab/shift-tab cycles focused widget
-        if event.key == 'tab' then
-            if Backend.isKeyDown('lshift', 'rshift') then
-                self:focusPreviousWidget()
-            else
-                self:focusNextWidget()
+    local function createBehavior (name, hooks)
+        self.behavior[name] = hooks
+        function hooks.destroy ()
+            for _, hook in ipairs(hooks) do
+                hook:unhook()
             end
-            return false
+            self.behavior[name] = nil
         end
+    end
 
-        -- space/enter presses focused widget
-        local widget = self.focusedWidget
-        if widget and event.key == 'space' or event.key == ' '
-        or event.key == 'return' then
-            self.input:handlePressStart(self, event.key, event.x, event.y,
-                widget, event.key)
+    createBehavior('context', {
+        self:onPressStart(function (event)
+            -- show context menu on right click
+            if event.button ~= 'right' then return end
+            local menu = event.target.context
+            if not menu then return end
+            menu:bubbleEvent('PressStart', event)
+            -- make sure it fits in the window
+            -- TODO: open in a new borderless window under SDL?
+            menu.menuLayout:placeNear(event.x - 1, event.y - 1, 2, 2)
             return false
-        end
+        end)
+    })
 
-        -- accelerators
-        local entry = self.accelerators[event.modifierFlags]
-        local acceleratedWidget = entry and entry[event.key]
-        if acceleratedWidget then
-            acceleratedWidget.hovered = true
-            self.input:handlePressStart(self, event.key, event.x, event.y,
-                acceleratedWidget, event.key)
+    createBehavior('shortcut', {
+        self:onKeyPress(function (event)
+            local entry = self.shortcuts[event.modifierFlags]
+            local widget = entry and entry[event.key]
+            if not widget then return end
+            widget.hovered = true
+            self.input:handlePressStart(self, 'left', event.x, event.y,
+                widget, widget.shortcut)
             return false
-        end
-    end)
+        end),
 
-    self:onKeyRelease(function (event)
-
-        -- space / enter presses focused widget
-        local widget = self.focusedWidget
-        if widget and event.key == 'space' or event.key == ' '
-        or event.key == 'return' then
-            self.input:handlePressEnd(self, event.key, event.x, event.y,
-                widget, event.key)
+        self:onKeyRelease(function (event)
+            local entry = self.shortcuts[event.modifierFlags]
+            local widget = entry and entry[event.key]
+            if not widget then return end
+            widget.hovered = false
+            self.input:handlePressEnd(self, 'left', event.x, event.y,
+                widget, widget.shortcut)
             return false
-        end
+        end)
+    })
 
-        -- accelerators
-        local entry = self.accelerators[event.modifierFlags]
-        local acceleratedWidget = entry and entry[event.key]
-
-        if acceleratedWidget then
-            acceleratedWidget.hovered = false
-            self.input:handlePressEnd(self, event.key, event.x, event.y,
-                acceleratedWidget, event.key)
-            return false
-        end
-    end)
-
-    self:onWheelMove(function (event)
-        if not event.hit then return end
-        for widget in event.target:eachAncestor(true) do
-            if widget.scroll then
-                if not widget.scrollY then
-                    widget.scrollY = 0
+    createBehavior('navigate', {
+        self:onKeyPress(function (event)
+            -- tab/shift-tab cycles focused widget
+            if event.key == 'tab' then
+                if Backend.isKeyDown('lshift', 'rshift') then
+                    self:focusPreviousWidget()
+                else
+                    self:focusNextWidget()
                 end
-                local scrollY = widget.scrollY - event.y * 10
-                local maxY = widget:getContentHeight() - widget:getHeight()
-                if scrollY > maxY then
-                    scrollY = maxY
-                end
-                if scrollY < 0 then
-                    scrollY = 0
-                end
-                if scrollY ~= widget.scrollY then
-                    widget.scrollY = scrollY
-                    widget:reshape()
-                    return false
-                end
-            end -- if widget.scroll
-        end -- ancestor loop
-        return false
-    end) -- wheel move
+                return false
+            end
 
-    self:onEnter(function (event)
-        local statusWidget = (self.master or self).statusWidget
-        if not statusWidget then return end
+            -- space/enter presses focused widget
+            local widget = self.focusedWidget
+            if widget and event.key == 'space' or event.key == ' '
+            or event.key == 'return' then
+                self.input:handlePressStart(self, 'left', event.x, event.y,
+                    widget, event.key)
+                return false
+            end
+        end),
 
-        statusWidget.text = event.target.status
-        return false
-    end)
+        self:onKeyRelease(function (event)
+            -- space / enter presses focused widget
+            local widget = self.focusedWidget
+            if widget and event.key == 'space' or event.key == ' '
+            or event.key == 'return' then
+                self.input:handlePressEnd(self, 'left', event.x, event.y,
+                    widget, event.key)
+                return false
+            end
+        end)
+    })
+
+    createBehavior('scroll', {
+        self:onWheelMove(function (event)
+            if not event.hit then return end
+            local amount = event.scrollY ~= 0 and event.scrollY or event.scrollX
+            for widget in event.target:eachAncestor(true) do
+                if widget:scrollBy(amount) then return false end
+            end -- ancestor loop
+            return false
+        end) -- wheel move
+    })
+
+    createBehavior('status', {
+        self:onEnter(function (event)
+            local statusWidget = (self.master or self).statusWidget
+            if not statusWidget then return end
+
+            statusWidget.text = event.target.status
+            return false
+        end)
+    })
 
 end
 

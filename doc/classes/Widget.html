@@ -1,10 +1,9 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
-   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<!doctype html>
 <html>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 <head>
+    <meta charset="utf-8">
     <title>Reference</title>
-    <link rel="stylesheet" href="../ldoc.css" type="text/css" />
+    <link rel="stylesheet" href="../ldoc.css" type="text/css">
 </head>
 <body>
 
@@ -23,29 +22,14 @@
 <!-- Menu -->
 
 <div id="navigation">
-<br/>
 <h1>LUIGI</h1>
 
 <ul>
   <li><a href="../index.html">Index</a></li>
 </ul>
 
-<h2>Contents</h2>
-<ul>
-<li><a href="#Functions">Functions</a></li>
-<li><a href="#Methods">Methods</a></li>
-<li><a href="#Constructor">Constructor</a></li>
-</ul>
-
-
-<h2>Classes</h2>
-<ul class="$(kind=='Topics' and '' or 'nowrap'">
-  <li><a href="../classes/Event.html">Event</a></li>
-  <li><a href="../classes/Layout.html">Layout</a></li>
-  <li><strong>Widget</strong></li>
-</ul>
 <h2>Widgets</h2>
-<ul class="$(kind=='Topics' and '' or 'nowrap'">
+<ul class="nowrap">
   <li><a href="../widgets/button.html">button</a></li>
   <li><a href="../widgets/check.html">check</a></li>
   <li><a href="../widgets/menu.html">menu</a></li>
@@ -57,16 +41,24 @@
   <li><a href="../widgets/status.html">status</a></li>
   <li><a href="../widgets/stepper.html">stepper</a></li>
   <li><a href="../widgets/text.html">text</a></li>
+  <li><a href="../widgets/window.html">window</a></li>
 </ul>
 <h2>Modules</h2>
-<ul class="$(kind=='Topics' and '' or 'nowrap'">
+<ul class="nowrap">
   <li><a href="../modules/attribute.html">attribute</a></li>
+</ul>
+<h2>Classes</h2>
+<ul class="nowrap">
+  <li><a href="../classes/Event.html">Event</a></li>
+  <li><a href="../classes/Layout.html">Layout</a></li>
+  <li><strong>Widget</strong></li>
 </ul>
 
 </div>
 
 <div id="content">
 
+<div id="content_top">
 <h1>Class <code>Widget</code></h1>
 <p>Widget class.</p>
 <p>
@@ -74,15 +66,12 @@
 </p>
 
 
-<h2><a href="#Functions">Functions</a></h2>
-<table class="function_list">
-	<tr>
-	<td class="name" nowrap><a href="#Widget.register">Widget.register (name, decorator)</a></td>
-	<td class="summary">Register a custom widget type.</td>
-	</tr>
-</table>
 <h2><a href="#Methods">Methods</a></h2>
 <table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Widget:defineAttribute">Widget:defineAttribute (name, descriptor)</a></td>
+	<td class="summary">Define a custom attribute for this widget.</td>
+	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#Widget:bubbleEvent">Widget:bubbleEvent (eventName[, data])</a></td>
 	<td class="summary">Fire an event on this widget and each ancestor.</td>
@@ -144,8 +133,57 @@
 	<td class="summary">Determine whether a point is within a widget.</td>
 	</tr>
 	<tr>
+	<td class="name" nowrap><a href="#Widget:eachAncestor">Widget:eachAncestor (includeSelf)</a></td>
+	<td class="summary">Iterate widget's ancestors.</td>
+	</tr>
+	<tr>
 	<td class="name" nowrap><a href="#Widget:reshape">Widget:reshape ()</a></td>
 	<td class="summary">Reshape the widget.</td>
+	</tr>
+</table>
+<h2><a href="#API_Properties">API Properties </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Widget.focused">Widget.focused</a></td>
+	<td class="summary">Whether this widget has keyboard focus.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Widget.hovered">Widget.hovered</a></td>
+	<td class="summary">Whether the pointer is within this widget.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Widget.pressed">Widget.pressed</a></td>
+	<td class="summary">Whether the pointer was pressed on this widget and not yet released.</td>
+	</tr>
+</table>
+<h2><a href="#Internal_Properties">Internal Properties </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Widget.isWidget">Widget.isWidget</a></td>
+	<td class="summary">Identifies this object as a widget.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Widget.isReshaping">Widget.isReshaping</a></td>
+	<td class="summary">Whether the widget is currently being reshaped.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Widget.hasType">Widget.hasType</a></td>
+	<td class="summary">Whether this widget has a type.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Widget.fontData">Widget.fontData</a></td>
+	<td class="summary">The <code>Font</code> object associated with the widget.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Widget.textData">Widget.textData</a></td>
+	<td class="summary">The <code>Text</code> object associated with the widget.</td>
+	</tr>
+</table>
+<h2><a href="#Static_Functions">Static Functions </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Widget.register">Widget.register (name, decorator)</a></td>
+	<td class="summary">Register a custom widget type.</td>
 	</tr>
 </table>
 <h2><a href="#Constructor">Constructor</a></h2>
@@ -156,42 +194,43 @@
 	</tr>
 </table>
 
-<br/>
-<br/>
 
+</div>
 
-    <h2 class="section-header "><a name="Functions"></a>Functions</h2>
-    Methods
+    <h2 class="section-header "><a name="Methods"></a>Methods</h2>
+
     <dl class="function">
     <dt>
-    <a name = "Widget.register"></a>
-    <strong>Widget.register (name, decorator)</strong>
+    <a name = "Widget:defineAttribute"></a>
+    <strong>Widget:defineAttribute (name, descriptor)</strong>
     </dt>
     <dd>
-    Register a custom widget type.
+    Define a custom attribute for this widget.
 
 
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">name</span>
             <span class="types"><a class="type" href="http://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
-        A unique name for this type of widget.
+        The name of the attribute.
         </li>
-        <li><span class="parameter">decorator</span>
-            <span class="types"><span class="type">function(Widget)</span></span>
-        An initialization function for this type of widget.
+        <li><span class="parameter">descriptor</span>
+            <span class="types"><a class="type" href="http://www.lua.org/manual/5.1/manual.html#5.5">table</a></span>
+        A table, optionally containing <code>get</code> and <code>set</code> functions (see <code>Attribute</code>).
         </li>
     </ul>
 
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="../classes/Widget.html#">Widget</a></span>
+        Return this widget for chaining.
+    </ol>
 
 
 
 
 </dd>
-</dl>
-    <h2 class="section-header "><a name="Methods"></a>Methods</h2>
-
-    <dl class="function">
     <dt>
     <a name = "Widget:bubbleEvent"></a>
     <strong>Widget:bubbleEvent (eventName[, data])</strong>
@@ -558,6 +597,40 @@ Cycles back around to the last widget in the tree from the layout root.
 
 </dd>
     <dt>
+    <a name = "Widget:eachAncestor"></a>
+    <strong>Widget:eachAncestor (includeSelf)</strong>
+    </dt>
+    <dd>
+    Iterate widget's ancestors.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">includeSelf</span>
+            <span class="types"><span class="type">boolean</span></span>
+        Whether to include this widget as the first result.
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">function</span></span>
+        Returns an iterator function that returns widgets.
+    </ol>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <pre class="example">
+<span class="keyword">for</span> ancestor <span class="keyword">in</span> myWidget:eachAncestor(<span class="keyword">true</span>) <span class="keyword">do</span>
+    <span class="global">print</span>(widget.<span class="global">type</span> <span class="keyword">or</span> <span class="string">'generic'</span>)
+<span class="keyword">end</span></pre>
+    </ul>
+
+</dd>
+    <dt>
     <a name = "Widget:reshape"></a>
     <strong>Widget:reshape ()</strong>
     </dt>
@@ -571,6 +644,183 @@ fires a Reshape event (does not bubble). Called recursively for each child.</p>
 on the parent widget.
 
 
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="API_Properties"></a>API Properties </h2>
+
+          <div class="section-description">
+          These properties may be useful when creating user interfaces,
+and are a formal part of the API.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "Widget.focused"></a>
+    <strong>Widget.focused</strong>
+    </dt>
+    <dd>
+    Whether this widget has keyboard focus. </p>
+
+<p>Can be used by styles and themes. This value is automatically set by
+the <code>Input</code> class, and should generally be treated as read-only.
+
+
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Widget.hovered"></a>
+    <strong>Widget.hovered</strong>
+    </dt>
+    <dd>
+    Whether the pointer is within this widget. </p>
+
+<p>Can be used by styles and themes. This value is automatically set by
+the <code>Input</code> class, and should generally be treated as read-only.
+
+
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Widget.pressed"></a>
+    <strong>Widget.pressed</strong>
+    </dt>
+    <dd>
+    Whether the pointer was pressed on this widget and not yet released. </p>
+
+<p>Can be used by styles and themes. This value is automatically set by
+the <code>Input</code> class, and should generally be treated as read-only.
+
+
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Internal_Properties"></a>Internal Properties </h2>
+
+          <div class="section-description">
+          These properties are used internally, but are not likely to be useful
+when creating user interfaces; they are not a formal part of the API
+and may change at any time.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "Widget.isWidget"></a>
+    <strong>Widget.isWidget</strong>
+    </dt>
+    <dd>
+    Identifies this object as a widget. </p>
+
+<p>Can be used to determine whether an unknown object is a widget.
+
+
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Widget.isReshaping"></a>
+    <strong>Widget.isReshaping</strong>
+    </dt>
+    <dd>
+    Whether the widget is currently being reshaped. </p>
+
+<p>Used internally by <a href="../classes/Widget.html#Widget:reshape">reshape</a> to prevent stack overflows when handling
+<code>Reshape</code> events.
+
+
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Widget.hasType"></a>
+    <strong>Widget.hasType</strong>
+    </dt>
+    <dd>
+    Whether this widget has a type. </p>
+
+<p>Used by the <a href="../modules/attribute.html#type">type</a> attribute to determine whether to
+run the type initializer when the widget's type is set. After a type
+initializer has run, <a href="../classes/Widget.html#Widget.hasType">hasType</a> becomes <code>true</code> and no other type
+initializers should run on the widget.
+
+
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Widget.fontData"></a>
+    <strong>Widget.fontData</strong>
+    </dt>
+    <dd>
+    The <code>Font</code> object associated with the widget.
+
+
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Widget.textData"></a>
+    <strong>Widget.textData</strong>
+    </dt>
+    <dd>
+    The <code>Text</code> object associated with the widget.
+
+
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header "><a name="Static_Functions"></a>Static Functions </h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "Widget.register"></a>
+    <strong>Widget.register (name, decorator)</strong>
+    </dt>
+    <dd>
+    Register a custom widget type.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">name</span>
+            <span class="types"><a class="type" href="http://www.lua.org/manual/5.1/manual.html#5.4">string</a></span>
+        A unique name for this type of widget.
+        </li>
+        <li><span class="parameter">decorator</span>
+            <span class="types"><span class="type">function(Widget)</span></span>
+        An initialization function for this type of widget.
+        </li>
+    </ul>
 
 
 
@@ -621,7 +871,7 @@ This table is identical to the constructed widget.
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.3</a></i>
-<i style="float:right;">Last updated 2015-12-07 05:47:24 </i>
+<i style="float:right;">Last updated 2015-12-17 04:20:17 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

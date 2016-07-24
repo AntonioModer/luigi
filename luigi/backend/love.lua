@@ -5,6 +5,10 @@ local Hooker = require(ROOT .. 'hooker')
 
 local Backend = {}
 
+Backend.isMac = function ()
+    return love.system.getOS() == 'OS X'
+end
+
 Backend.run = function () end
 
 Backend.Cursor = love.mouse.newCursor
@@ -31,15 +35,13 @@ Backend.drawRectangle = love.graphics.rectangle
 
 Backend.print = love.graphics.print
 
-Backend.printf = love.graphics.printf
-
 Backend.getClipboardText = love.system.getClipboardText
 
 Backend.setClipboardText = love.system.setClipboardText
 
 Backend.getMousePosition = love.mouse.getPosition
 
-Backend.getMousePosition = love.mouse.getPosition
+Backend.setMousePosition = love.mouse.setPosition
 
 Backend.getSystemCursor = love.mouse.getSystemCursor
 
@@ -75,6 +77,8 @@ Backend.setScissor = love.graphics.setScissor
 
 Backend.getScissor = love.graphics.getScissor
 
+Backend.intersectScissor = love.graphics.intersectScissor
+
 function Backend.hide (layout)
     for _, item in ipairs(layout.hooks) do
         Hooker.unhook(item)
@@ -90,16 +94,22 @@ local getMouseButtonId, isMouseDown
 
 if love._version_minor < 10 then
     getMouseButtonId = function (value)
-        return value == 'l' and 1
-            or value == 'r' and 2
-            or value == 'm' and 3
+        return value == 'l' and 'left'
+            or value == 'r' and 'right'
+            or value == 'm' and 'middle'
+            or value == 'x1' and 4
+            or value == 'x2' and 5
+            or value
     end
     isMouseDown = function ()
         return love.mouse.isDown('l', 'r', 'm')
     end
 else
     getMouseButtonId = function (value)
-        return value
+        return value == 1 and 'left'
+            or value == 2 and 'right'
+            or value == 3 and 'middle'
+            or value
     end
     isMouseDown = function ()
         return love.mouse.isDown(1, 2, 3)
@@ -133,9 +143,11 @@ function Backend.show (layout)
         end
     end)
     hook(layout, 'keypressed', function (key, isRepeat)
+        if key == ' ' then key = 'space' end
         return input:handleKeyPress(layout, key, Backend.getMousePosition())
     end)
     hook(layout, 'keyreleased', function (key)
+        if key == ' ' then key = 'space' end
         return input:handleKeyRelease(layout, key, Backend.getMousePosition())
     end)
     hook(layout, 'textinput', function (text)
